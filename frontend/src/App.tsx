@@ -113,6 +113,17 @@ function getMonthDays(year: number, month: number) {
 const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
+const subscriptionPlans = [
+  { id: 'free', name: 'Grátis', price: 0, description: 'Organize seus estudos sem custo' },
+  { id: 'mensal', name: 'Mensal', price: 24.9, description: 'Assinatura mensal com recursos extras' },
+  { id: 'pro', name: 'Pro', price: 39.9, description: 'Acesso total ao modo premium e suporte' },
+]
+
+const currency = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+})
+
 export default function App() {
   const [page, setPage] = useState<Page>('Resumo')
   const [groups, setGroups] = useState<StudyGroup[]>(initialGroups)
@@ -129,6 +140,9 @@ export default function App() {
   const [activityGroupId, setActivityGroupId] = useState(initialGroups[0]?.id ?? '')
   const [activityDueDate, setActivityDueDate] = useState('')
   const [activityDescription, setActivityDescription] = useState('')
+  const [selectedPlan, setSelectedPlan] = useState(subscriptionPlans[1].id)
+  const [separateBilling, setSeparateBilling] = useState(true)
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth())
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear())
 
@@ -192,7 +206,8 @@ export default function App() {
   const handleCreateActivity = (event: FormEvent) => {
     event.preventDefault()
     const title = activityTitle.trim()
-    if (!title || !activityDueDate) return
+    if (!title) return
+    const dueDate = activityDueDate || selectedDate
     setActivities((current) => [
       ...current,
       {
@@ -200,7 +215,7 @@ export default function App() {
         title,
         subjectId: activitySubjectId,
         groupId: activityGroupId,
-        dueDate: activityDueDate,
+        dueDate,
         description: activityDescription.trim() || 'Sem descrição adicional.',
         status: 'Planejada',
       },
@@ -297,9 +312,54 @@ export default function App() {
                   <p className="mt-2 text-sm text-slate-600">Disciplinas registradas no caderno.</p>
                 </div>
                 <div className="rounded-[32px] border border-stone-200 bg-white p-6 shadow-sm shadow-stone-200">
-                  <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Alunos únicos</p>
-                  <p className="mt-3 text-3xl font-semibold text-amber-700">{totalMembers}</p>
-                  <p className="mt-2 text-sm text-slate-600">Pessoas envolvidas em seus grupos.</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Plano ativo</p>
+                      <p className="mt-3 text-3xl font-semibold text-amber-700">{subscriptionPlans.find((plan) => plan.id === selectedPlan)?.name}</p>
+                    </div>
+                    <span className="rounded-3xl bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">{selectedPlan === 'free' ? 'Grátis' : currency.format(subscriptionPlans.find((plan) => plan.id === selectedPlan)?.price ?? 0)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">Assinatura mensal com cobrança separada e renovação automática.</p>
+                </div>
+              </div>
+
+              <div className="rounded-[32px] border border-stone-200 bg-white p-6 shadow-sm shadow-stone-200">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Assinatura</p>
+                    <h2 className="text-xl font-semibold text-slate-950">Plano mensal separado</h2>
+                  </div>
+                  <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Cobrança mensal separada</div>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  {subscriptionPlans.map((plan) => (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => setSelectedPlan(plan.id)}
+                      className={`rounded-3xl border p-5 text-left transition ${selectedPlan === plan.id ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300'}`}
+                    >
+                      <p className="font-semibold">{plan.name}</p>
+                      <p className="mt-1 text-2xl font-bold">{plan.price === 0 ? 'Grátis' : currency.format(plan.price)}</p>
+                      <p className="mt-3 text-sm text-slate-600">{plan.description}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-5 flex flex-col gap-3 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold">Cobrança separada</p>
+                    <span>{separateBilling ? 'Ativo' : 'Desativado'}</span>
+                  </div>
+                  <p>Você pode pagar sua assinatura mensal de forma independente do plano do app para usar funções extras sempre que quiser.</p>
+                  <button
+                    type="button"
+                    onClick={() => setSeparateBilling((current) => !current)}
+                    className="inline-flex items-center justify-center rounded-2xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+                  >
+                    {separateBilling ? 'Desativar cobrança separada' : 'Ativar cobrança separada'}
+                  </button>
                 </div>
               </div>
 
@@ -549,16 +609,19 @@ export default function App() {
                       <div key={day} className="py-2">{day}</div>
                     ))}
                   </div>
-                  <div className="mt-2 grid min-w-[680px] grid-cols-7 gap-2">
+                  <div className="mt-2 grid min-w-full grid-cols-7 gap-2">
                     {monthDays.map((date, index) => {
                       const dateKey = date ? date.toISOString().slice(0, 10) : ''
                       const tasks = date ? activitiesByDate.get(dateKey) : undefined
+                      const isSelected = dateKey === selectedDate
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={`${index}-${dateKey}`}
+                          onClick={() => date && setSelectedDate(dateKey)}
                           className={`min-h-[90px] rounded-3xl border p-3 text-left transition ${
-                            date ? 'border-stone-200 bg-white' : 'bg-transparent'
-                          }`}
+                            date ? 'border-stone-200 bg-white hover:bg-amber-50' : 'bg-transparent'
+                          } ${isSelected ? 'border-amber-500 bg-amber-100 shadow-sm' : ''}`}
                         >
                           {date ? (
                             <>
@@ -580,10 +643,26 @@ export default function App() {
                               )}
                             </>
                           ) : null}
-                        </div>
+                        </button>
                       )
                     })}
                   </div>
+                </div>
+                <div className="mt-6 grid gap-3 rounded-[28px] border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">Data selecionada</p>
+                      <p className="text-slate-900">{selectedDate}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActivityDueDate(selectedDate)}
+                      className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-stone-100"
+                    >
+                      Usar no formulário
+                    </button>
+                  </div>
+                  <p>Toque em um dia para marcar seus estudos e adicione tarefas diretamente ao calendário.</p>
                 </div>
               </div>
 
