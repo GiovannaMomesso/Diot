@@ -1,34 +1,7 @@
-﻿import { useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-
-type GroupMember = {
-  name: string
-  role: string
-}
-
-type StudyGroup = {
-  id: string
-  name: string
-  members: GroupMember[]
-}
-
-type Subject = {
-  id: string
-  title: string
-  teacher: string
-  schedule: string
-  groupIds: string[]
-}
-
-type StudyActivity = {
-  id: string
-  title: string
-  subjectId: string
-  groupId: string
-  dueDate: string
-  description: string
-  status: 'Planejada' | 'Em andamento' | 'Finalizada'
-}
+import { api } from './api'
+import type { GroupMember, StudyActivity, StudyGroup, Subject } from './types'
 
 const initialGroups: StudyGroup[] = [
   {
@@ -67,17 +40,7 @@ const initialSubjects: Subject[] = [
   },
 ]
 
-const initialActivities: StudyActivity[] = [
-  {
-    id: 'activity-1',
-    title: 'Montar maquete do ecossistema',
-    subjectId: 'subject-1',
-    groupId: 'group-1',
-    dueDate: '2026-08-12',
-    description: 'Cada membro prepara sua parte para a apresentação.',
-    status: 'Em andamento',
-  },
-]
+const initialActivities: StudyActivity[] = []
 
 const pageOptions = ['Resumo', 'Grupos', 'Agenda'] as const
 
@@ -91,6 +54,13 @@ function parseGroupMembers(value: string) {
       return name ? { name, role: role || 'Estudo' } : null
     })
     .filter((member): member is GroupMember => Boolean(member))
+}
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function getMonthDays(year: number, month: number) {
@@ -126,9 +96,9 @@ const currency = new Intl.NumberFormat('pt-BR', {
 
 export default function App() {
   const [page, setPage] = useState<Page>('Resumo')
-  const [groups, setGroups] = useState<StudyGroup[]>(initialGroups)
-  const [subjects, setSubjects] = useState<Subject[]>(initialSubjects)
-  const [activities, setActivities] = useState<StudyActivity[]>(initialActivities)
+  const [groups, setGroups] = useState<StudyGroup[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [activities, setActivities] = useState<StudyActivity[]>([])
 
   const [groupName, setGroupName] = useState('')
   const [groupMembers, setGroupMembers] = useState('')
@@ -136,20 +106,17 @@ export default function App() {
   const [subjectTeacher, setSubjectTeacher] = useState('')
   const [subjectSchedule, setSubjectSchedule] = useState('')
   const [activityTitle, setActivityTitle] = useState('')
-  const [activitySubjectId, setActivitySubjectId] = useState(initialSubjects[0]?.id ?? '')
-  const [activityGroupId, setActivityGroupId] = useState(initialGroups[0]?.id ?? '')
+  const [activitySubjectId, setActivitySubjectId] = useState('')
+  const [activityGroupId, setActivityGroupId] = useState('')
   const [activityDueDate, setActivityDueDate] = useState('')
   const [activityDescription, setActivityDescription] = useState('')
   const [selectedPlan, setSelectedPlan] = useState(subscriptionPlans[1].id)
   const [separateBilling, setSeparateBilling] = useState(true)
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()))
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth())
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear())
-
-  const totalMembers = useMemo(
-    () => new Set(groups.flatMap((group) => group.members.map((member) => member.name))).size,
-    [groups],
-  )
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const monthDays = useMemo(() => getMonthDays(calendarYear, calendarMonth), [calendarMonth, calendarYear])
 
@@ -164,81 +131,13 @@ export default function App() {
   }, [activities])
 
   const nextActivities = useMemo(() => {
-    const todayKey = new Date().toISOString().slice(0, 10)
+    const todayKey = toDateKey(new Date())
     return activities
       .slice()
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
       .filter((activity) => activity.dueDate >= todayKey)
       .slice(0, 5)
   }, [activities])
-
-  const handleCreateGroup = (event: FormEvent) => {
-    event.preventDefault()
-    const name = groupName.trim()
-    if (!name) return
-    setGroups((current) => [
-      ...current,
-      { id: crypto.randomUUID(), name, members: parseGroupMembers(groupMembers) },
-    ])
-    setGroupName('')
-    setGroupMembers('')
-  }
-
-  const handleCreateSubject = (event: FormEvent) => {
-    event.preventDefault()
-    const title = subjectTitle.trim()
-    if (!title || !subjectTeacher.trim() || !subjectSchedule.trim()) return
-    setSubjects((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        title,
-        teacher: subjectTeacher.trim(),
-        schedule: subjectSchedule.trim(),
-        groupIds: [],
-      },
-    ])
-    setSubjectTitle('')
-    setSubjectTeacher('')
-    setSubjectSchedule('')
-  }
-
-  const handleCreateActivity = (event: FormEvent) => {
-    event.preventDefault()
-    const title = activityTitle.trim()
-    if (!title) return
-    const dueDate = activityDueDate || selectedDate
-    setActivities((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        title,
-        subjectId: activitySubjectId,
-        groupId: activityGroupId,
-        dueDate,
-        description: activityDescription.trim() || 'Sem descrição adicional.',
-        status: 'Planejada',
-      },
-    ])
-    setActivityTitle('')
-    setActivityDueDate('')
-    setActivityDescription('')
-  }
-
-  const toggleGroupInSubject = (subjectId: string, groupId: string) => {
-    setSubjects((current) =>
-      current.map((subject) => {
-        if (subject.id !== subjectId) return subject
-        const alreadyAssigned = subject.groupIds.includes(groupId)
-        return {
-          ...subject,
-          groupIds: alreadyAssigned
-            ? subject.groupIds.filter((id) => id !== groupId)
-            : [...subject.groupIds, groupId],
-        }
-      }),
-    )
-  }
 
   const changeMonth = (direction: 'prev' | 'next') => {
     setCalendarMonth((current) => {
@@ -261,6 +160,143 @@ export default function App() {
     Finalizada: 'bg-emerald-100 text-emerald-900',
   }
 
+  const loadData = async () => {
+    try {
+      setIsLoading(true)
+      setErrorMessage(null)
+      const [groupsData, subjectsData, activitiesData, subscriptionData] = await Promise.all([
+        api.groups.list(),
+        api.subjects.list(),
+        api.activities.list(),
+        api.subscription.get(),
+      ])
+
+      setGroups(groupsData)
+      setSubjects(subjectsData)
+      setActivities(activitiesData)
+      setSelectedPlan(subscriptionData.planId)
+      setSeparateBilling(subscriptionData.separateBilling)
+      setActivitySubjectId(subjectsData[0]?.id ?? '')
+      setActivityGroupId(groupsData[0]?.id ?? '')
+      if (!activityDueDate) {
+        setActivityDueDate(selectedDate)
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível carregar os dados do servidor.')
+      setGroups(initialGroups)
+      setSubjects(initialSubjects)
+      setActivities(initialActivities)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadData()
+  }, [])
+
+  useEffect(() => {
+    if (!activityDueDate || activityDueDate === selectedDate) {
+      setActivityDueDate(selectedDate)
+    }
+  }, [activityDueDate, selectedDate])
+
+  const handleCreateGroup = async (event: FormEvent) => {
+    event.preventDefault()
+    const name = groupName.trim()
+    if (!name) return
+
+    try {
+      setErrorMessage(null)
+      const createdGroup = await api.groups.create(name, parseGroupMembers(groupMembers))
+      setGroups((current) => [...current, createdGroup])
+      setGroupName('')
+      setGroupMembers('')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível criar o grupo.')
+    }
+  }
+
+  const handleCreateSubject = async (event: FormEvent) => {
+    event.preventDefault()
+    const title = subjectTitle.trim()
+    if (!title || !subjectTeacher.trim() || !subjectSchedule.trim()) return
+
+    try {
+      setErrorMessage(null)
+      const createdSubject = await api.subjects.create({
+        title,
+        teacher: subjectTeacher.trim(),
+        schedule: subjectSchedule.trim(),
+      })
+      setSubjects((current) => [...current, createdSubject])
+      setActivitySubjectId(createdSubject.id)
+      setSubjectTitle('')
+      setSubjectTeacher('')
+      setSubjectSchedule('')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível criar a matéria.')
+    }
+  }
+
+  const handleCreateActivity = async (event: FormEvent) => {
+    event.preventDefault()
+    const title = activityTitle.trim()
+    if (!title) return
+
+    try {
+      setErrorMessage(null)
+      const createdActivity = await api.activities.create({
+        title,
+        subjectId: activitySubjectId || subjects[0]?.id || '',
+        groupId: activityGroupId || groups[0]?.id || '',
+        dueDate: activityDueDate || selectedDate,
+        description: activityDescription.trim(),
+      })
+      setActivities((current) => [...current, createdActivity])
+      setActivityTitle('')
+      setActivityDueDate(selectedDate)
+      setActivityDescription('')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível criar a atividade.')
+    }
+  }
+
+  const toggleGroupInSubject = async (subjectId: string, groupId: string) => {
+    try {
+      setErrorMessage(null)
+      const result = await api.subjects.toggleGroup(subjectId, groupId)
+      setSubjects((current) =>
+        current.map((subject) => (subject.id === subjectId ? { ...subject, groupIds: result.groupIds } : subject)),
+      )
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível atualizar a matéria.')
+    }
+  }
+
+  const handleSelectPlan = async (planId: string) => {
+    try {
+      setErrorMessage(null)
+      const response = await api.subscription.update({ planId, separateBilling })
+      setSelectedPlan(response.planId)
+      setSeparateBilling(response.separateBilling)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível atualizar o plano.')
+    }
+  }
+
+  const handleToggleSeparateBilling = async () => {
+    const nextValue = !separateBilling
+    try {
+      setErrorMessage(null)
+      const response = await api.subscription.update({ planId: selectedPlan, separateBilling: nextValue })
+      setSelectedPlan(response.planId)
+      setSeparateBilling(response.separateBilling)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível atualizar a cobrança.')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-stone-100 text-slate-950">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -275,21 +311,21 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setPage('Resumo')}
-                className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${page === 'Resumo' ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300'}`}
+                className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition duration-200 ease-out ${page === 'Resumo' ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300 hover:-translate-y-0.5'}`}
               >
                 Resumo
               </button>
               <button
                 type="button"
                 onClick={() => setPage('Grupos')}
-                className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${page === 'Grupos' ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300'}`}
+                className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition duration-200 ease-out ${page === 'Grupos' ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300 hover:-translate-y-0.5'}`}
               >
                 Grupos
               </button>
               <button
                 type="button"
                 onClick={() => setPage('Agenda')}
-                className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${page === 'Agenda' ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300'}`}
+                className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition duration-200 ease-out ${page === 'Agenda' ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300 hover:-translate-y-0.5'}`}
               >
                 Agenda
               </button>
@@ -298,6 +334,16 @@ export default function App() {
         </header>
 
         <main className="space-y-6">
+          {isLoading ? (
+            <div className="rounded-[32px] border border-stone-200 bg-white p-8 text-center text-sm text-slate-600 shadow-sm shadow-stone-200">
+              Carregando dados do servidor...
+            </div>
+          ) : null}
+          {errorMessage ? (
+            <div className="rounded-[32px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
+              {errorMessage}
+            </div>
+          ) : null}
           {page === 'Resumo' && (
             <section className="space-y-6">
               <div className="grid gap-4 lg:grid-cols-3">
@@ -337,7 +383,7 @@ export default function App() {
                     <button
                       key={plan.id}
                       type="button"
-                      onClick={() => setSelectedPlan(plan.id)}
+                      onClick={() => void handleSelectPlan(plan.id)}
                       className={`rounded-3xl border p-5 text-left transition ${selectedPlan === plan.id ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm' : 'border-stone-200 bg-white text-slate-700 hover:border-stone-300'}`}
                     >
                       <p className="font-semibold">{plan.name}</p>
@@ -355,7 +401,7 @@ export default function App() {
                   <p>Você pode pagar sua assinatura mensal de forma independente do plano do app para usar funções extras sempre que quiser.</p>
                   <button
                     type="button"
-                    onClick={() => setSeparateBilling((current) => !current)}
+                    onClick={() => void handleToggleSeparateBilling()}
                     className="inline-flex items-center justify-center rounded-2xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
                   >
                     {separateBilling ? 'Desativar cobrança separada' : 'Ativar cobrança separada'}
@@ -603,43 +649,47 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mt-6 overflow-x-auto rounded-[28px] border border-stone-200 bg-stone-50 p-4">
-                  <div className="grid min-w-[680px] grid-cols-7 gap-2 text-center text-xs uppercase text-slate-500">
+                <div className="animate-fade-in-up mt-6 overflow-hidden rounded-[28px] border border-stone-200 bg-stone-50 p-2 sm:p-4">
+                  <div className="grid grid-cols-7 gap-2 text-center text-[11px] uppercase tracking-wide text-slate-500 sm:text-xs">
                     {weekDays.map((day) => (
                       <div key={day} className="py-2">{day}</div>
                     ))}
                   </div>
-                  <div className="mt-2 grid min-w-full grid-cols-7 gap-2">
+                  <div className="mt-2 grid grid-cols-7 gap-2">
                     {monthDays.map((date, index) => {
-                      const dateKey = date ? date.toISOString().slice(0, 10) : ''
+                      const dateKey = date ? toDateKey(date) : ''
                       const tasks = date ? activitiesByDate.get(dateKey) : undefined
                       const isSelected = dateKey === selectedDate
                       return (
                         <button
                           type="button"
                           key={`${index}-${dateKey}`}
-                          onClick={() => date && setSelectedDate(dateKey)}
-                          className={`min-h-[90px] rounded-3xl border p-3 text-left transition ${
+                          onClick={() => {
+                            if (!date) return
+                            setSelectedDate(dateKey)
+                            setActivityDueDate(dateKey)
+                          }}
+                          className={`min-h-[88px] rounded-3xl border p-2 text-left transition duration-200 ease-out sm:min-h-[104px] sm:p-3 ${
                             date ? 'border-stone-200 bg-white hover:bg-amber-50' : 'bg-transparent'
                           } ${isSelected ? 'border-amber-500 bg-amber-100 shadow-sm' : ''}`}
                         >
                           {date ? (
                             <>
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-semibold text-slate-950">{date.getDate()}</span>
                                 {tasks ? (
-                                  <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">{tasks.length}x</span>
+                                  <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold text-amber-900 sm:text-[11px]">{tasks.length}x</span>
                                 ) : null}
                               </div>
                               {tasks ? (
-                                <div className="mt-3 space-y-1 text-[11px] text-slate-600">
+                                <div className="mt-2 space-y-1 text-[10px] text-slate-600 sm:text-[11px]">
                                   {tasks.slice(0, 2).map((task) => (
                                     <p key={task.id} className="truncate">• {task.title}</p>
                                   ))}
-                                  {tasks.length > 2 ? <p className="text-[11px] text-slate-500">+{tasks.length - 2} mais</p> : null}
+                                  {tasks.length > 2 ? <p className="text-[10px] text-slate-500 sm:text-[11px]">+{tasks.length - 2} mais</p> : null}
                                 </div>
                               ) : (
-                                <p className="mt-3 text-[11px] text-slate-400">Sem tarefas</p>
+                                <p className="mt-2 text-[10px] text-slate-400 sm:text-[11px]">Sem tarefas</p>
                               )}
                             </>
                           ) : null}
@@ -656,8 +706,11 @@ export default function App() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setActivityDueDate(selectedDate)}
-                      className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-stone-100"
+                      onClick={() => {
+                        setSelectedDate(selectedDate)
+                        setActivityDueDate(selectedDate)
+                      }}
+                      className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-amber-900 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-stone-100"
                     >
                       Usar no formulário
                     </button>
@@ -741,7 +794,11 @@ export default function App() {
                         <input
                           type="date"
                           value={activityDueDate}
-                          onChange={(event) => setActivityDueDate(event.target.value)}
+                          onChange={(event) => {
+                            const nextValue = event.target.value
+                            setActivityDueDate(nextValue)
+                            setSelectedDate(nextValue)
+                          }}
                           className="mt-2 w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-slate-900 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
                         />
                       </label>
